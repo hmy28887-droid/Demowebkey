@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Quản lý Key</title>
+<style>
+body{
+background:#0f172a;
+color:white;
+font-family:sans-serif;
+padding:40px;
+}
+table{
+width:100%;
+border-collapse:collapse;
+background:#1e293b;
+border-radius:12px;
+overflow:hidden;
+}
+th,td{
+padding:12px;
+text-align:center;
+}
+th{
+background:#111827;
+}
+tr:nth-child(even){
+background:#1f2937;
+}
+.badge{
+padding:5px 10px;
+border-radius:8px;
+font-size:12px;
+}
+.active{background:#16a34a;}
+.disabled{background:#ef4444;}
+.btn{
+padding:6px 10px;
+border-radius:6px;
+text-decoration:none;
+color:white;
+margin:0 3px;
+}
+.toggle{background:#eab308;}
+.delete{background:#ef4444;}
+.create{
+display:inline-block;
+margin-bottom:20px;
+background:#22c55e;
+padding:10px 15px;
+border-radius:8px;
+color:white;
+text-decoration:none;
+}
+</style>
+<script>
+function countdown(expire,id){
+    setInterval(()=>{
+        let now=new Date().getTime();
+        let t=new Date(expire).getTime()-now;
+        if(t<0){
+            document.getElementById(id).innerHTML="Hết hạn";
+            return;
+        }
+        let h=Math.floor(t/(1000*60*60));
+        let m=Math.floor((t%(1000*60*60))/(1000*60));
+        let s=Math.floor((t%(1000*60))/1000);
+        document.getElementById(id).innerHTML=h+"h "+m+"m "+s+"s";
+    },1000);
+}
+</script>
+</head>
+<body>
+
+<h1>🔐 Quản lý Khóa cấp phép</h1>
+
+<a class="create" href="/create">+ Tạo Key</a>
+<a class="create" href="/logout" style="background:#ef4444;">Logout</a>
+
+<table>
+<tr>
+<th>Key</th>
+<th>Thiết bị</th>
+<th>Hạn sử dụng</th>
+<th>Trạng thái</th>
+<th>Hành động</th>
+</tr>
+
+{% for key,data in keys.items() %}
+<tr>
+<td>{{ key }}</td>
+<td>{{ data.device if data.device else "Chưa gán" }}</td>
+<td>
+<span id="time{{loop.index}}"></span>
+<script>
+countdown("{{ data.expire }}","time{{loop.index}}");
+</script>
+</td>
+<td>
+{% if data.active %}
+<span class="badge active">Hoạt động</span>
+{% else %}
+<span class="badge disabled">Tắt</span>
+{% endif %}
+</td>
+<td>
+<a class="btn toggle" href="/toggle/{{key}}">On/Off</a>
+<a class="btn delete" href="/delete/{{key}}">Xóa</a>
+</td>
+</tr>
+{% endfor %}
+</table>
+
+</body>
+</html>
