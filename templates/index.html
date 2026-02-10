@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Key Manager</title>
+    <style>
+        body {
+            font-family:Arial;
+            background:#f2f4f8;
+            padding:30px;
+        }
+        .card {
+            background:white;
+            padding:15px;
+            margin-bottom:10px;
+            border-radius:8px;
+            box-shadow:0 2px 6px rgba(0,0,0,0.1);
+        }
+        .active { color:green; font-weight:bold; }
+        .inactive { color:red; font-weight:bold; }
+        button {
+            padding:6px 10px;
+            border:none;
+            cursor:pointer;
+        }
+        .btn-create { background:#007bff; color:white; }
+        .btn-toggle { background:orange; color:white; }
+        .btn-delete { background:red; color:white; }
+        .topbar {
+            margin-bottom:20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <h2>Key Manager Dashboard</h2>
+    <a href="/logout">Logout</a>
+</div>
+
+<form method="post" action="/create">
+    <input name="key" placeholder="Nhập key">
+    <input name="days" placeholder="Số ngày">
+    <button class="btn-create" type="submit">Tạo Key</button>
+</form>
+
+<hr>
+
+{% for key, data in keys.items() %}
+<div class="card">
+    <b>{{ key }}</b><br>
+    Device: {{ data.device if data.device else "Chưa gắn" }}<br>
+    Hết hạn: {{ data.expire }}<br>
+    Trạng thái:
+    <span class="{{ 'active' if data.active else 'inactive' }}">
+        {{ "Hoạt động" if data.active else "Đã tắt" }}
+    </span>
+    <br><br>
+    <a href="/toggle/{{ key }}"><button class="btn-toggle">On/Off</button></a>
+    <a href="/delete/{{ key }}"><button class="btn-delete">Xóa</button></a>
+</div>
+{% endfor %}
+
+</body>
+</html>
+
