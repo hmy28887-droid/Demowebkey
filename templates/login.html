@@ -1,57 +1,46 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Admin Login</title>
-<style>
-body{
-background:#0f172a;
-color:white;
-font-family:sans-serif;
-display:flex;
-justify-content:center;
-align-items:center;
-height:100vh;
-}
-.box{
-background:#1e293b;
-padding:40px;
-border-radius:12px;
-width:300px;
-box-shadow:0 0 30px rgba(0,0,0,.6);
-}
-input{
-width:100%;
-padding:10px;
-margin-bottom:15px;
-border:none;
-border-radius:8px;
-background:#334155;
-color:white;
-}
-button{
-width:100%;
-padding:10px;
-border:none;
-border-radius:8px;
-background:#22c55e;
-color:white;
-cursor:pointer;
-}
-button:hover{
-background:#16a34a;
-}
-</style>
+    <title>Login</title>
+    <style>
+        body {
+            background: linear-gradient(135deg,#1e3c72,#2a5298);
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            height:100vh;
+            font-family:Arial;
+        }
+        .box {
+            background:white;
+            padding:30px;
+            border-radius:10px;
+            width:300px;
+            text-align:center;
+        }
+        input {
+            width:100%;
+            padding:10px;
+            margin:10px 0;
+        }
+        button {
+            width:100%;
+            padding:10px;
+            background:#2a5298;
+            color:white;
+            border:none;
+            cursor:pointer;
+        }
+    </style>
 </head>
 <body>
 <div class="box">
-<h2>Admin Login</h2>
-<form method="POST">
-<input name="username" placeholder="Username">
-<input name="password" type="password" placeholder="Password">
-<button type="submit">Login</button>
-</form>
+    <h2>Admin Login</h2>
+    <form method="post">
+        <input name="username" placeholder="Username">
+        <input name="password" type="password" placeholder="Password">
+        <button type="submit">Login</button>
+    </form>
 </div>
 </body>
 </html>
-
