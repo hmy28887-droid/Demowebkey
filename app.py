@@ -1,99 +1,205 @@
 from flask import Flask, render_template, request, redirect, session, jsonify
-import uuid
-import hashlib
-import datetime
+from datetime import datetime, timedelta, timezone
+import secrets
 import os
+import json
 
 app = Flask(__name__)
-app.secret_key = "super-secret-key-change-this"
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-# ====== CONFIG ADMIN ======
-ADMIN_USER = "admin"
-ADMIN_PASS = "123456"   # <-- ĐỔI Ở ĐÂY
+# ===== CONFIG ADMIN =====
+ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+ADMIN_PASS = os.environ.get("ADMIN_PASS", "hoangnam0804")
 
-# ====== DATABASE MEMORY ======
-keys_db = {}
+DATA_FILE = "keys.json"
 
-# ====== UTIL ======
-def generate_key():
-    return str(uuid.uuid4()).replace("-", "").upper()[:16]
 
-# ====== ROUTES ======
+# =============================
+# LOAD & SAVE
+# =============================
 
-@app.route("/")
-def home():
-    if "admin" not in session:
-        return redirect("/login")
-    return render_template("dashboard.html", keys=keys_db)
+def load_keys():
+    if not os.path.exists(DATA_FILE):
+        return {}
 
-@app.route("/login", methods=["GET","POST"])
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_keys(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+# =============================
+# AUTO DISABLE EXPIRED KEYS
+# =============================
+
+def auto_disable_expired():
+    keys = load_keys()
+    now = datetime.now(timezone.utc)
+    changed = False
+
+    for key, data in keys.items():
+        if data["active"]:
+            expire_time = datetime.fromisoformat(data["expire"])
+            if now > expire_time:
+                data["active"] = False
+                changed = True
+
+    if changed:
+        save_keys(keys)
+
+
+# =============================
+# LOGIN
+# =============================
+
+@app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         user = request.form.get("username")
-        pw = request.form.get("password")
-        if user == ADMIN_USER and pw == ADMIN_PASS:
+        pwd = request.form.get("password")
+
+        if user == ADMIN_USER and pwd == ADMIN_PASS:
             session["admin"] = True
             return redirect("/")
+
     return render_template("login.html")
+
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-@app.route("/create")
-def create():
-    key = generate_key()
-    expire = datetime.datetime.utcnow() + datetime.timedelta(days=1)
 
-    keys_db[key] = {
+# =============================
+# ADMIN PANEL
+# =============================
+
+@app.route("/")
+def home():
+    if not session.get("admin"):
+        return redirect("/login")
+
+    auto_disable_expired()
+    keys = load_keys()
+
+    return render_template("index.html", keys=keys)
+
+
+# =============================
+# CREATE KEY
+# =============================
+
+@app.route("/create", methods=["POST"])
+def create_key():
+    if not session.get("admin"):
+        return redirect("/login")
+
+    hours = int(request.form.get("hours", 24))
+
+    expire_time = datetime.now(timezone.utc) + timedelta(hours=hours)
+    new_key = secrets.token_hex(8).upper()
+
+    keys = load_keys()
+
+    keys[new_key] = {
         "device": None,
-        "expire": expire,
+        "expire": expire_time.isoformat(),
         "active": True
     }
+
+    save_keys(keys)
     return redirect("/")
 
-@app.route("/toggle/<key>")
-def toggle(key):
-    if key in keys_db:
-        keys_db[key]["active"] = not keys_db[key]["active"]
-    return redirect("/")
+
+# =============================
+# DELETE KEY
+# =============================
 
 @app.route("/delete/<key>")
-def delete(key):
-    if key in keys_db:
-        del keys_db[key]
+def delete_key(key):
+    if not session.get("admin"):
+        return redirect("/login")
+
+    keys = load_keys()
+    if key in keys:
+        del keys[key]
+        save_keys(keys)
+
     return redirect("/")
 
-# ===== API CHECK =====
+
+# =============================
+# TOGGLE KEY
+# =============================
+
+@app.route("/toggle/<key>")
+def toggle_key(key):
+    if not session.get("admin"):
+        return redirect("/login")
+
+    keys = load_keys()
+    if key in keys:
+        keys[key]["active"] = not keys[key]["active"]
+        save_keys(keys)
+
+    return redirect("/")
+
+
+# =============================
+# API CHECK (CHO EXE / SCRIPT)
+# =============================
 
 @app.route("/api/check", methods=["POST"])
 def api_check():
+    auto_disable_expired()
+
     data = request.json
+    if not data:
+        return jsonify({"success": False, "message": "No data"})
+
     key = data.get("key")
     device = data.get("device")
 
-    if key not in keys_db:
-        return jsonify({"status":"invalid"})
+    keys = load_keys()
 
-    k = keys_db[key]
+    if key not in keys:
+        return jsonify({"success": False, "message": "Key không tồn tại"})
 
-    if not k["active"]:
-        return jsonify({"status":"disabled"})
+    key_data = keys[key]
 
-    if datetime.datetime.utcnow() > k["expire"]:
-        return jsonify({"status":"expired"})
+    if not key_data["active"]:
+        return jsonify({"success": False, "message": "Key đã bị tắt hoặc hết hạn"})
 
-    # Giới hạn 1 thiết bị thật
-    if k["device"] is None:
-        k["device"] = device
-    elif k["device"] != device:
-        return jsonify({"status":"device_limit"})
+    now = datetime.now(timezone.utc)
+    expire_time = datetime.fromisoformat(key_data["expire"])
 
-    return jsonify({"status":"ok"})
+    if now > expire_time:
+        key_data["active"] = False
+        save_keys(keys)
+        return jsonify({"success": False, "message": "Key đã hết hạn"})
 
-# ===== RUN =====
+    # ===== GIỚI HẠN 1 THIẾT BỊ =====
+    if key_data["device"] is None:
+        key_data["device"] = device
+        save_keys(keys)
+    elif key_data["device"] != device:
+        return jsonify({"success": False, "message": "Key đã dùng trên thiết bị khác"})
+
+    return jsonify({
+        "success": True,
+        "message": "Key hợp lệ",
+        "expire": key_data["expire"]
+    })
+
+
+# =============================
+# RUN
+# =============================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-  
+    app.run(debug=True)
+           
