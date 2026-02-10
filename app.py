@@ -1,142 +1,159 @@
+from flask import Flask, render_template, request, redirect, session, jsonify
+from datetime import datetime, timedelta
 import os
 import json
-from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, redirect, session
 
 app = Flask(__name__)
-app.secret_key = "supersecret123"
+app.secret_key = "super_secret_key_change_me"
 
-KEYS_FILE = "keys.json"
+DATA_FILE = "keys.json"
 
-
-# ================= UTIL =================
-
+# =========================
+# Load / Save Keys
+# =========================
 def load_keys():
-    if not os.path.exists(KEYS_FILE):
-        with open(KEYS_FILE, "w") as f:
-            json.dump({}, f)
-    with open(KEYS_FILE, "r") as f:
+    if not os.path.exists(DATA_FILE):
+        return {}
+    with open(DATA_FILE, "r") as f:
         return json.load(f)
 
-
 def save_keys(data):
-    with open(KEYS_FILE, "w") as f:
+    with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+keys = load_keys()
 
-def auto_disable_expired():
-    keys = load_keys()
-    now = datetime.utcnow()
+# =========================
+# Auto disable expired keys
+# =========================
+def check_expired():
+    changed = False
+    now = datetime.now()
 
-    for key in keys:
-        if keys[key]["expire"]:
-            expire_time = datetime.fromisoformat(keys[key]["expire"])
-            if now > expire_time:
-                keys[key]["active"] = False
+    for k in keys:
+        exp = datetime.fromisoformat(keys[k]["expires_at"])
+        if now > exp and keys[k]["active"]:
+            keys[k]["active"] = False
+            changed = True
 
-    save_keys(keys)
+    if changed:
+        save_keys(keys)
 
-
-# ================= ROUTES =================
-
-@app.route("/")
-def home():
-    if "admin" not in session:
-        return redirect("/login")
-
-    auto_disable_expired()
-    keys = load_keys()
-    return render_template("index.html", keys=keys)
-
-
-@app.route("/login", methods=["GET", "POST"])
+# =========================
+# LOGIN
+# =========================
+@app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if request.form["username"] == "admin" and request.form["password"] == "hoangnam0303":
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        if username == "admin" and password == "hoangnam0804":
             session["admin"] = True
-            return redirect("/")
-        else:
-            return "Sai tài khoản"
+            return redirect("/dashboard")
 
     return render_template("login.html")
 
+# =========================
+# DASHBOARD
+# =========================
+@app.route("/dashboard")
+def dashboard():
+    if not session.get("admin"):
+        return redirect("/")
 
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
+    check_expired()
+    return render_template("dashboard.html", keys=keys, now=datetime.now())
 
-
+# =========================
+# CREATE KEY
+# =========================
 @app.route("/create", methods=["POST"])
 def create_key():
-    if "admin" not in session:
-        return redirect("/login")
+    if not session.get("admin"):
+        return redirect("/")
 
-    key = request.form["key"]
-    days = int(request.form["days"])
-
-    keys = load_keys()
-
-    expire_time = datetime.utcnow() + timedelta(days=days)
+    key = request.form.get("key")
+    days = int(request.form.get("days"))
 
     keys[key] = {
-        "device": None,
-        "expire": expire_time.isoformat(),
+        "device_id": None,
+        "device_name": None,
+        "expires_at": (datetime.now() + timedelta(days=days)).isoformat(),
         "active": True
     }
 
     save_keys(keys)
-    return redirect("/")
+    return redirect("/dashboard")
 
-
+# =========================
+# TOGGLE
+# =========================
 @app.route("/toggle/<key>")
-def toggle_key(key):
-    keys = load_keys()
+def toggle(key):
     if key in keys:
         keys[key]["active"] = not keys[key]["active"]
         save_keys(keys)
-    return redirect("/")
 
+    return redirect("/dashboard")
 
+# =========================
+# DELETE
+# =========================
 @app.route("/delete/<key>")
-def delete_key(key):
-    keys = load_keys()
+def delete(key):
     if key in keys:
         del keys[key]
         save_keys(keys)
-    return redirect("/")
 
+    return redirect("/dashboard")
 
-# ================= API =================
-
+# =========================
+# API CHECK (QUAN TRỌNG)
+# =========================
 @app.route("/api/check", methods=["POST"])
-def check_key():
-    auto_disable_expired()
-
+def api_check():
     data = request.json
     key = data.get("key")
-    device = data.get("device")
-
-    keys = load_keys()
+    device_id = data.get("device_id")
+    device_name = data.get("device_name")
 
     if key not in keys:
-        return jsonify({"status": "invalid"})
+        return jsonify({"status": "invalid", "message": "Key không tồn tại"})
 
-    if not keys[key]["active"]:
-        return jsonify({"status": "disabled"})
+    key_data = keys[key]
 
-    if keys[key]["device"] is None:
-        keys[key]["device"] = device
+    # Hết hạn
+    if datetime.now() > datetime.fromisoformat(key_data["expires_at"]):
+        key_data["active"] = False
         save_keys(keys)
-    elif keys[key]["device"] != device:
-        return jsonify({"status": "device_mismatch"})
+        return jsonify({"status": "expired", "message": "Key đã hết hạn"})
 
-    return jsonify({"status": "valid"})
+    if not key_data["active"]:
+        return jsonify({"status": "disabled", "message": "Key đã bị tắt"})
+
+    # Nếu chưa gắn thiết bị
+    if not key_data["device_id"]:
+        key_data["device_id"] = device_id
+        key_data["device_name"] = device_name
+        save_keys(keys)
+
+    # Nếu khác thiết bị
+    elif key_data["device_id"] != device_id:
+        return jsonify({
+            "status": "invalid",
+            "message": "Key đã được dùng trên thiết bị khác"
+        })
+
+    return jsonify({
+        "status": "valid",
+        "device": key_data["device_name"]
+    })
 
 
-# ================= RUN =================
-
+# =========================
+# RUN (QUAN TRỌNG CHO RENDER)
+# =========================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
     
