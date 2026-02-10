@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Key Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 30px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .logout {
+            text-decoration: none;
+            background: #dc3545;
+            color: white;
+            padding: 8px 14px;
+            border-radius: 5px;
+        }
+
+        .create-box {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        input {
+            padding: 8px;
+            margin-right: 10px;
+        }
+
+        button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .btn-create {
+            background: #007bff;
+            color: white;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+        .status-active {
+            color: green;
+            font-weight: bold;
+        }
+
+        .status-inactive {
+            color: red;
+            font-weight: bold;
+        }
+
+        .btn-toggle {
+            background: orange;
+            color: white;
+        }
+
+        .btn-delete {
+            background: red;
+            color: white;
+        }
+
+        .key-title {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .device {
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <h1>🔐 Key Manager Dashboard</h1>
+    <a href="/logout" class="logout">Logout</a>
+</div>
+
+<div class="create-box">
+    <form method="POST" action="/create">
+        <input type="text" name="key" placeholder="Nhập key" required>
+        <input type="number" name="days" placeholder="Số ngày" required>
+        <button class="btn-create" type="submit">Tạo Key</button>
+    </form>
+</div>
+
+{% for key, data in keys.items() %}
+<div class="card">
+    <div class="key-title">{{ key }}</div>
+
+    <div>
+        Trạng thái:
+        {% if data.active %}
+            <span class="status-active">Hoạt động</span>
+        {% else %}
+            <span class="status-inactive">Đã tắt / Hết hạn</span>
+        {% endif %}
+    </div>
+
+    <div class="device">
+        Thiết bị:
+        {% if data.device %}
+            {{ data.device }}
+        {% else %}
+            Chưa gắn
+        {% endif %}
+    </div>
+
+    <div>
+        Hết hạn: {{ data.expire }}
+    </div>
+
+    <br>
+
+    <a href="/toggle/{{ key }}">
+        <button class="btn-toggle">On / Off</button>
+    </a>
+
+    <a href="/delete/{{ key }}">
+        <button class="btn-delete">Xóa</button>
+    </a>
+</div>
+{% endfor %}
+
+</body>
+</html>
+
