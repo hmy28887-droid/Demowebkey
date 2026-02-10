@@ -1,159 +1,195 @@
-from flask import Flask, render_template, request, redirect, session, jsonify
-from datetime import datetime, timedelta
 import os
 import json
+import uuid
+from datetime import datetime, timedelta
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 
 app = Flask(__name__)
 app.secret_key = "super_secret_key_change_me"
 
 DATA_FILE = "keys.json"
 
+
 # =========================
-# Load / Save Keys
+# Load / Save
 # =========================
+
 def load_keys():
     if not os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "w") as f:
+            json.dump({}, f)
         return {}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
 
 def save_keys(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-keys = load_keys()
 
 # =========================
-# Auto disable expired keys
+# Helper
 # =========================
-def check_expired():
+
+def auto_disable_expired(keys):
+    now = datetime.utcnow()
     changed = False
-    now = datetime.now()
 
-    for k in keys:
-        exp = datetime.fromisoformat(keys[k]["expires_at"])
-        if now > exp and keys[k]["active"]:
-            keys[k]["active"] = False
-            changed = True
+    for k, v in keys.items():
+        if v["active"]:
+            expire_time = datetime.fromisoformat(v["expire"])
+            if now > expire_time:
+                v["active"] = False
+                changed = True
 
     if changed:
         save_keys(keys)
 
+
 # =========================
-# LOGIN
+# Login
 # =========================
+
+ADMIN_USER = "admin"
+ADMIN_PASS = "hoangnam0303"
+
+
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
 
-        if username == "admin" and password == "hoangnam0804":
+        if username == ADMIN_USER and password == ADMIN_PASS:
             session["admin"] = True
             return redirect("/dashboard")
 
     return render_template("login.html")
 
+
 # =========================
-# DASHBOARD
+# Dashboard
 # =========================
+
 @app.route("/dashboard")
 def dashboard():
     if not session.get("admin"):
         return redirect("/")
 
-    check_expired()
-    return render_template("dashboard.html", keys=keys, now=datetime.now())
+    keys = load_keys()
+    auto_disable_expired(keys)
 
-# =========================
-# CREATE KEY
-# =========================
+    return render_template(
+        "dashboard.html",
+        keys=keys,
+        now=datetime.utcnow()
+    )
+
+
 @app.route("/create", methods=["POST"])
 def create_key():
     if not session.get("admin"):
         return redirect("/")
 
-    key = request.form.get("key")
-    days = int(request.form.get("days"))
+    keys = load_keys()
 
-    keys[key] = {
-        "device_id": None,
-        "device_name": None,
-        "expires_at": (datetime.now() + timedelta(days=days)).isoformat(),
+    key_value = request.form.get("key")
+    days = int(request.form.get("days", 1))
+
+    expire_time = datetime.utcnow() + timedelta(days=days)
+
+    keys[key_value] = {
+        "device": None,
+        "expire": expire_time.isoformat(),
         "active": True
     }
 
     save_keys(keys)
     return redirect("/dashboard")
 
-# =========================
-# TOGGLE
-# =========================
+
 @app.route("/toggle/<key>")
-def toggle(key):
+def toggle_key(key):
+    if not session.get("admin"):
+        return redirect("/")
+
+    keys = load_keys()
+
     if key in keys:
         keys[key]["active"] = not keys[key]["active"]
         save_keys(keys)
 
     return redirect("/dashboard")
 
-# =========================
-# DELETE
-# =========================
+
 @app.route("/delete/<key>")
-def delete(key):
+def delete_key(key):
+    if not session.get("admin"):
+        return redirect("/")
+
+    keys = load_keys()
+
     if key in keys:
         del keys[key]
         save_keys(keys)
 
     return redirect("/dashboard")
 
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+
 # =========================
-# API CHECK (QUAN TRỌNG)
+# API CHECK
 # =========================
+
 @app.route("/api/check", methods=["POST"])
 def api_check():
     data = request.json
     key = data.get("key")
     device_id = data.get("device_id")
-    device_name = data.get("device_name")
+
+    keys = load_keys()
+    auto_disable_expired(keys)
 
     if key not in keys:
-        return jsonify({"status": "invalid", "message": "Key không tồn tại"})
+        return jsonify({"status": "invalid"})
 
     key_data = keys[key]
 
-    # Hết hạn
-    if datetime.now() > datetime.fromisoformat(key_data["expires_at"]):
+    if not key_data["active"]:
+        return jsonify({"status": "invalid"})
+
+    expire_time = datetime.fromisoformat(key_data["expire"])
+
+    if datetime.utcnow() > expire_time:
         key_data["active"] = False
         save_keys(keys)
-        return jsonify({"status": "expired", "message": "Key đã hết hạn"})
+        return jsonify({"status": "expired"})
 
-    if not key_data["active"]:
-        return jsonify({"status": "disabled", "message": "Key đã bị tắt"})
-
-    # Nếu chưa gắn thiết bị
-    if not key_data["device_id"]:
-        key_data["device_id"] = device_id
-        key_data["device_name"] = device_name
+    # Giới hạn 1 thiết bị
+    if key_data["device"] is None:
+        key_data["device"] = device_id
         save_keys(keys)
+    elif key_data["device"] != device_id:
+        return jsonify({"status": "device_locked"})
 
-    # Nếu khác thiết bị
-    elif key_data["device_id"] != device_id:
-        return jsonify({
-            "status": "invalid",
-            "message": "Key đã được dùng trên thiết bị khác"
-        })
-
-    return jsonify({
-        "status": "valid",
-        "device": key_data["device_name"]
-    })
+    return jsonify({"status": "valid"})
 
 
 # =========================
-# RUN (QUAN TRỌNG CHO RENDER)
+# RUN
 # =========================
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
     
