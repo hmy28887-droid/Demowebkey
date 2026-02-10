@@ -13,7 +13,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "super-secret-key")
 
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
-ADMIN_PASS = os.environ.get("ADMIN_PASS", "123456")
+ADMIN_PASS = os.environ.get("ADMIN_PASS", "nam0303")
 
 DATA_FILE = "keys.json"
 
